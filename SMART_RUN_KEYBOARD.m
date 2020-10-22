@@ -1,37 +1,33 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% This is the main code for runing the SMART Robot                  %
-% Author: Yu Gu                                                     %
-% This is the version with the Lightware Laser interface            %
-% The Kinect interface is removed                                   % 
+% This is the code for runing the SMART Robot with the keyboard     %
+% Author: Yu Gu and Nick Ohi                                        %                                   % 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 clear all
 close all
 
 % Definitions and initializations
-Ts_Desired=0.1;                              % Desired sampling time
-Ts=0.1;                                      % sampling time is 0.1 second. It can be reduced 
-                                             % slightly to offset other overhead in the loop
-Tend=300;                                    % Was 60 seconds;
-Total_Steps=Tend/Ts_Desired;                 % The total number of time steps;
-Create_Full_Speed=0.2;                       % The highest speed the robot can travel. (Max is 0.5m/s)
-Create_Min_Speed=0.07;                       % The minimum speed in order for the robot to move (m/s)
-avoiding = false;                            % Set to true when avoiding an obstacle
-avoidingState = 1;                           % 1 = turn, 2 = drive forward
-avoidAngleToTurnLeft = -deg2rad(35);          % Angle to turn left when avoiding (radians)
-avoidAngleToTurnRight = deg2rad(35);         % Angle to turn left when avoiding (radians)
-avoidAngleToTurn = avoidAngleToTurnLeft;     % Initial value for angle to turn during avoid (radians)
-avoidDriveDistance = 0.25;                    % Distance to drive forward during avoid (meters)
-avoidBackupDistance = -0.2;                   % Distance to drive backward during avoid (meters)
-avoidTriggerDistance = 5;                  % Distance from front range finder (mm)
-goalX = 3.66;                                % Goal x location (meters)
-goalY = 0.61;                                % Goal y location (meters)
+Ts_Desired=0.1;                 % Desired sampling time
+Ts=0.1;                         % sampling time is 0.1 second. It can be reduced 
+                                % slightly to offset other overhead in the loop
+Tend=300;                       % Was 60 seconds;
+Total_Steps=Tend/Ts_Desired;    % The total number of time steps;
+Create_Full_Speed=0.15;          % The highest speed the robot can travel. (Max is 0.5m/s)
+Create_Min_Speed=0.01;          % The minimum speed in order for the robot to move (m/s)
+avoiding = false;               % Set to true when avoiding an obstacle
+avoidingState = 1;              % 1 = turn, 2 = drive forward
+avoidAngleToTurn = deg2rad(30);  % Initial value for angle to turn during avoid (radians)
+avoidDriveDistance = 0.2;       % Distance to drive during avoid (meters)
+avoidTriggerDistance = 200;      % Distance from front range finder (mm)
+goalX = 3.66;                   % Goal x location (meters)
+goalY = 0.61;                   % Goal y location (meters)
 
 % Keyboard input definitions
 global keyboardStruct
 global fig
 keyboardStruct = struct('quit',0,'leftSpeed',0,'rightSpeed',0,'maxSpeed',Create_Full_Speed);
 fig = figure;
+
 
 % Magnetometer Calibration Data
 Mag_A=[  2.3750     0.2485      -0.2296
@@ -202,93 +198,8 @@ for i=1:Total_Steps
     % SetDriveWheelsSMART(S_Create, rightWheelVel, leftWheelVel, SD.CliffLeft(i),SD.CliffRight(i),SD.CliffFrontLeft(i),SD.CliffFrontRight(i));
 
     catchKeyPress;
-    
-    if avoiding
-        switch avoidingState
-            case 1 % back up
-                [avoidDone, driveData] = DriveDistance(avoidBackupDistance, S_Create, SD, driveData, i);
-                if avoidDone
-                    avoidingState = 2;
-                else
-                    avoidingState = 1;
-                end
-                avoiding = true;
-            case 2 % turn
-                [avoidDone, driveData] = TurnAngle(avoidAngleToTurn, S_Create, SD, driveData, i);
-                if avoidDone
-                    avoidingState = 3;
-                else
-                    avoidingState = 2;
-                end
-                avoiding = true;
-            case 3 % drive forward
-                [avoidDone, driveData] = DriveDistance(avoidDriveDistance, S_Create, SD, driveData, i);
-                if avoidDone
-                    avoidingState = 1;
-                    avoiding = false;
-                    driveData = ResetDriveState(driveData);
-                else
-                    avoidingState = 3;
-                    avoiding = true;
-                end
-                if SD.RF_F(i)<avoidTriggerDistance  || SD.BumpFront(i) || SD.BumpLeft(i) || SD.BumpRight(i)
-                    if SD.BumpLeft(i)
-                        avoidAngleToTurn = avoidAngleToTurnRight;
-                    elseif SD.BumpRight(i)
-                        avoidAngleToTurn = avoidAngleToTurnLeft;
-                    else
-                        if SD.RF_L < SD.RF_R
-                            avoidAngleToTurn = avoidAngleToTurnRight;
-                        else
-                            avoidAngleToTurn = avoidAngleToTurnLeft;
-                        end
-                    end
-                    avoiding = true;
-                    avoidingState = 1;
-                    SetDriveWheelsSMART(S_Create, 0, 0, SD.CliffLeft(i),SD.CliffRight(i),SD.CliffFrontLeft(i),SD.CliffFrontRight(i),0,0,0);
-                    driveData = ResetDriveState(driveData);
-                end
-        end
-    else
-        if SD.RF_F(i)<avoidTriggerDistance || SD.BumpFront(i) || SD.BumpLeft(i) || SD.BumpRight(i)
-            if SD.BumpLeft(i)
-                avoidAngleToTurn = avoidAngleToTurnRight;
-            elseif SD.BumpRight(i)
-                avoidAngleToTurn = avoidAngleToTurnLeft;
-            else
-                if SD.RF_L < SD.RF_R
-                    avoidAngleToTurn = avoidAngleToTurnRight;
-                else
-                    avoidAngleToTurn = avoidAngleToTurnLeft;
-                end
-            end
-            avoiding = true;
-            avoidingState = 1;
-            forwardSpeed = 0;
-            turningSpeed = 0;
-            driveData = ResetDriveState(driveData);
-        else
-            yawError = atan2(goalY - SD.Y(i), goalX - SD.X(i)) - mod(SD.Yaw(i), sign(SD.Yaw(i))*2*pi);
-            fprintf('yawError = %f\n',rad2deg(yawError));
-            if yawError > -pi/2 && yawError < pi/2
-                forwardSpeed = Create_Full_Speed*0.5*cos(yawError);
-                turningSpeed = 1.5*yawError/(pi/2)*Create_Full_Speed*0.5;
-            else
-                forwardSpeed = 0;
-                turningSpeed = sign(yawError)*Create_Full_Speed*0.5;
-            end
-        end
-        fprintf('forwardSpeed = %f\n',forwardSpeed);
-        fprintf('turningSpeed = %f\n',turningSpeed);
-        fprintf('goalXY = [%f,%f]\n',goalX,goalY);
-        fprintf('currentXY = [%f,%f]\n',SD.X(i),SD.Y(i));
-        fprintf('currentYaw = %f\n',rad2deg(SD.Yaw(i)));
-        fprintf('distanceToGoal = %f\n\n',sqrt((goalX - SD.X(i))^2 + (goalY - SD.Y(i))^2))
-        rightWheelVel = forwardSpeed - turningSpeed;
-        leftWheelVel = forwardSpeed + turningSpeed;
-        SetDriveWheelsSMART(S_Create, rightWheelVel, leftWheelVel, SD.CliffLeft(i),SD.CliffRight(i),SD.CliffFrontLeft(i),SD.CliffFrontRight(i),0,0,0);
-    end
-    if sqrt((goalX - SD.X(i))^2 + (goalY - SD.Y(i))^2) < 0.2 || keyboardStruct.quit
+    SetDriveWheelsSMART(S_Create, keyboardStruct.rightSpeed, keyboardStruct.leftSpeed, SD.CliffLeft(i),SD.CliffRight(i),SD.CliffFrontLeft(i),SD.CliffFrontRight(i),0,0,0);
+    if keyboardStruct.quit
         break
     end
     
@@ -315,7 +226,7 @@ for i=1:Total_Steps
     end
 end
 Total_Elapse_Time=SD.Time(Total_Steps)-SD.Time(1)  % Calcualte the total elapse time, not counting the minutes
-SetDriveWheelsSMART(S_Create, 0, 0, SD.CliffLeft(end),SD.CliffRight(end),SD.CliffFrontLeft(end),SD.CliffFrontRight(end),0,0,0);       % Stop the wheels
+SetDriveWheelsSMART(S_Create, 0, 0, SD.CliffLeft(end),SD.CliffRight(end),SD.CliffFrontLeft(end),SD.CliffFrontRight(end),SD.BumpRight(end),SD.BumpLeft(end),SD.BumpFront(end));       % Stop the wheels
 BeepRoomba(S_Create);       % Make a Beeping Sound
 
 % Properly close the serial ports
@@ -333,7 +244,7 @@ save('SMART_DATA.mat', 'SD');       % Save all the collected data to a .mat file
 
 % Define custom drive functions
 function [driveDone, driveData] = DriveDistance(desiredDistance, S_Create, SD, driveDataIn, i)
-    Kp = 1.2;
+    Kp = 0.5;
     driveData = driveDataIn;
     switch driveData.state
         case 1 % init
@@ -363,7 +274,7 @@ function [driveDone, driveData] = DriveDistance(desiredDistance, S_Create, SD, d
                 speed = -driveData.minSpeed;
             end
             driveDone = false;
-            if drivenDistance >= abs(desiredDistance)
+            if drivenDistance >= desiredDistance
                 driveData.state = 3;
             else
                 driveData.state = 2;
@@ -373,11 +284,11 @@ function [driveDone, driveData] = DriveDistance(desiredDistance, S_Create, SD, d
             driveDone = true;
             driveData = ResetDriveState(driveData);
     end
-    SetDriveWheelsSMART(S_Create, speed, speed, SD.CliffLeft(i),SD.CliffRight(i),SD.CliffFrontLeft(i),SD.CliffFrontRight(i),0,0,0);
+    SetDriveWheelsSMART(S_Create, speed, speed, SD.CliffLeft(i),SD.CliffRight(i),SD.CliffFrontLeft(i),SD.CliffFrontRight(i),SD.BumpRight(i),SD.BumpLeft(i),SD.BumpFront(i));
 end
 
 function [driveDone, driveData] = TurnAngle(desiredDeltaAngle, S_Create, SD, driveDataIn, i)
-    Kp = 0.6;
+    Kp = 0.5;
     driveData = driveDataIn;
     switch driveData.state
         case 1 % init
@@ -413,7 +324,7 @@ function [driveDone, driveData] = TurnAngle(desiredDeltaAngle, S_Create, SD, dri
             driveDone = true;
             driveData = ResetDriveState(driveData);
     end
-    SetDriveWheelsSMART(S_Create, -speed, speed, SD.CliffLeft(i),SD.CliffRight(i),SD.CliffFrontLeft(i),SD.CliffFrontRight(i),0,0,0);
+    SetDriveWheelsSMART(S_Create, -speed, speed, SD.CliffLeft(i),SD.CliffRight(i),SD.CliffFrontLeft(i),SD.CliffFrontRight(i),SD.BumpRight(i),SD.BumpLeft(i),SD.BumpFront(i));
 end
 
 function driveData = ResetDriveState(driveDataIn)
